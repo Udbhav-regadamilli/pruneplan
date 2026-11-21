@@ -1,6 +1,6 @@
 {
   "name": "pruneplan",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Review and safely apply unused dependency and dead code cleanup plans.",
   "type": "module",
   "author": "Lakshmi Udbhav Regadamilli",
@@ -15,7 +15,9 @@
   "publishConfig": {
     "access": "public"
   },
-  "bin": "./bin/pruneplan.js",
+  "bin": {
+    "pruneplan": "bin/pruneplan.js"
+  },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   },
