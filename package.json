@@ -15,9 +15,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "bin": {
-    "pruneplan": "./bin/pruneplan.js"
-  },
+  "bin": "./bin/pruneplan.js",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   },
