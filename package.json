@@ -1,0 +1,40 @@
+{
+  "name": "pruneplan",
+  "version": "0.1.0",
+  "description": "Review and safely apply unused dependency and dead code cleanup plans.",
+  "type": "module",
+  "author": "Lakshmi Udbhav Regadamilli",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Udbhav-regadamilli/pruneplan.git"
+  },
+  "homepage": "https://github.com/Udbhav-regadamilli/pruneplan#readme",
+  "bugs": {
+    "url": "https://github.com/Udbhav-regadamilli/pruneplan/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "bin": {
+    "pruneplan": "./bin/pruneplan.js"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "keywords": [
+    "unused-dependencies",
+    "dead-code",
+    "cleanup",
+    "knip",
+    "cli"
+  ],
+  "license": "MIT",
+  "files": [
+    "bin/",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "knip": "^6.47.0"
+  }
+}
