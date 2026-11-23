@@ -3,7 +3,7 @@
 import { spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
-import { access, readFile, readdir, rm } from 'node:fs/promises';
+import { access, lstat, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -50,7 +50,8 @@ function run(command, args, cwd, { capture = false } = {}) {
   const result = spawnSync(command, args, {
     cwd, encoding: 'utf8',
     stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
-    shell: false,
+    // Windows package-manager and global Knip commands are commonly exposed as .cmd shims.
+    shell: process.platform === 'win32',
     windowsHide: true,
   });
   if (result.error) throw new Error(`${command} could not be started: ${result.error.message}`);
@@ -137,7 +138,7 @@ async function selectCandidates(plan, yes) {
   stdout.write('\nChoose item numbers to apply, separated by commas (or press Enter for none). Configuration-like files require explicit selection.\n');
   const answer = (await promptLine('Apply: ')).trim();
   if (!answer) return [];
-  if (answer.toLowerCase() === 'all') return selectable;
+  if (answer.toLowerCase() === 'all') return selectable.filter((item) => !item.reviewFirst);
   const numbers = answer.split(',').map((part) => part.trim());
   if (numbers.some((part) => !/^\d+$/.test(part))) throw new Error('Enter comma-separated item numbers or `all`.');
   const ids = new Set(numbers.map(Number));
@@ -168,11 +169,30 @@ function safeProjectPath(directory, file) {
   return absolute;
 }
 
+async function assertNoSymlinkParent(directory, target) {
+  const relative = path.relative(directory, path.dirname(target));
+  let current = directory;
+  for (const part of relative.split(path.sep).filter(Boolean)) {
+    current = path.join(current, part);
+    try {
+      if ((await lstat(current)).isSymbolicLink()) {
+        throw new Error(`Refusing to remove a file through a symlinked directory: ${path.relative(directory, current)}`);
+      }
+    } catch (error) {
+      if (error.code === 'ENOENT') throw new Error(`Parent directory no longer exists; no changes applied: ${path.relative(directory, current)}`);
+      throw error;
+    }
+  }
+}
+
 async function removeSelectedFiles(directory, selected) {
   for (const item of selected.filter((candidate) => candidate.kind === 'file')) {
     const target = safeProjectPath(directory, item.file);
-    const statEntries = await readdir(path.dirname(target));
-    if (!statEntries.includes(path.basename(target))) throw new Error(`File no longer exists; no further changes applied: ${item.file}`);
+    await assertNoSymlinkParent(directory, target);
+    try { await lstat(target); } catch (error) {
+      if (error.code === 'ENOENT') throw new Error(`File no longer exists; no further changes applied: ${item.file}`);
+      throw error;
+    }
     await rm(target, { force: false });
     stdout.write(`Removed ${item.file}\n`);
   }
