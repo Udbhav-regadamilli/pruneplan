@@ -2,7 +2,7 @@
 
 **Find dead code and unused packages. Review the cleanup before applying it.**
 
-`pruneplan` gives you one reviewable cleanup flow for unused dependencies, files, exports, and types. It uses [Knip](https://knip.dev/) to analyze the project, removes dependencies through the package manager already in use, and updates the lockfile as part of that removal.
+`pruneplan` gives you a reviewable cleanup flow for unused dependencies, files, exports, and types. It uses [Knip](https://knip.dev/) to analyze a JavaScript or TypeScript project, and leaves changes in your working tree for review.
 
 ## Quick start
 
@@ -12,41 +12,42 @@ From the root of a JavaScript or TypeScript project:
 npx pruneplan
 ```
 
-This only prints a plan. After reviewing it, apply the cleanup interactively:
+This only prints a plan. Apply selected candidates interactively:
 
 ```sh
 npx pruneplan --apply
 ```
 
-To scan a different project, pass its directory:
+Choose candidate numbers separated by commas, or `all`. Configuration-like files are highlighted and require explicit selection. To scan another project, pass its directory:
 
 ```sh
 npx pruneplan ../my-app
 ```
 
-## What happens when you apply
-
-1. `pruneplan` asks Knip to scan the project and displays the cleanup candidates.
-2. After you confirm, it removes unused dependencies with npm, pnpm, Yarn, or Bun, updating the package manager's lockfile.
-3. It asks Knip to remove reported unused files, exports, and types.
-4. It runs any `typecheck`, `lint`, `test`, and `build` scripts defined in the project's `package.json`.
-5. It leaves the changes in your working tree for review with `git diff`.
-
-For CI or other non-interactive use, `--yes` explicitly skips the prompt:
+For CI or other non-interactive use, `--yes` applies all safely actionable findings without prompting. It excludes configuration-like files and aborts if the Knip findings changed since preview:
 
 ```sh
 npx pruneplan --yes
 ```
 
-## Safety
+Use `--json` to print a machine-readable report, including warnings and Knip version/source:
 
-- The default command only reports findings. It does not modify files.
-- Applying requires `--apply` plus an interactive confirmation, or the explicit `--yes` flag.
-- Package removals use your detected package manager so its lockfile is updated too.
-- npm and pnpm package removals skip install scripts.
-- Validation runs only scripts that already exist in your project. These are ordinary project commands and may have their own side effects.
-- Static analysis can miss runtime-loaded packages and exports used through reflection, plugins, or external consumers. Review the plan and final diff before committing.
-- If validation fails, the changes remain in your working tree so you can inspect and fix them; `pruneplan` does not discard project changes.
+```sh
+npx pruneplan --json
+```
+
+## Review and safety
+
+- The default command is preview-only and does not modify files.
+- Interactive apply is item-selective; only selected files are removed and only selected dependencies are passed to your package manager.
+- Knip's auto-fixer operates across findings rather than an individual selected export. To ensure pruneplan never changes unselected exports or types, those candidates are displayed for manual review but are not automatically fixed.
+- Unlisted dependencies, duplicate exports, and other Knip issue categories are surfaced as warnings and are never interpreted as install suggestions or automatic cleanup.
+- Configuration-like files are marked for extra review. Use Knip configuration (entries, workspaces, project patterns, or ignore settings) to correct analysis scope instead of assuming a flagged config file is dead.
+- Immediately before applying, pruneplan scans again. If findings changed, interactive users review/select against the updated plan; `--yes` aborts rather than applying a stale plan.
+- A dirty Git worktree is reported before changes. Existing changes are never automatically discarded.
+- Available `typecheck`, `lint`, `test`, and `build` scripts are listed before apply and run afterwards. Passing checks does not guarantee every runtime path is covered.
+- If validation fails, changes remain in the working tree. Review with `git diff` and recover manually as needed.
+- Static analysis can miss runtime-loaded dependencies and exports used through reflection, plugins, dynamic routes, or external consumers. Findings are candidates, not proof they are safe to remove.
 
 ## Requirements
 
@@ -54,7 +55,7 @@ npx pruneplan --yes
 - A JavaScript or TypeScript project with a `package.json`
 - npm, pnpm, Yarn, or Bun, identified from a lockfile or the `packageManager` field
 
-Knip is installed as a dependency of `pruneplan`; you do not need to add it to the project being scanned.
+Knip is bundled with pruneplan; a project-local Knip installation is preferred when present.
 
 ## License
 
