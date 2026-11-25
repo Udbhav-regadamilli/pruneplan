@@ -6,10 +6,11 @@ on:
 
 jobs:
   package:
-    runs-on: ubuntu-latest
     strategy:
       matrix:
+        os: [ubuntu-latest, windows-latest]
         node-version: [20, 22, 24]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -18,4 +19,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: node --check bin/pruneplan.js
+      - run: node --check bin/process-runner.js
+      - run: npm test
       - run: npm pack --dry-run

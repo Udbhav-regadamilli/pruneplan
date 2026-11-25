@@ -29,12 +29,16 @@
     "cli"
   ],
   "license": "MIT",
+  "scripts": {
+    "test": "node --test"
+  },
   "files": [
     "bin/",
     "README.md",
     "LICENSE"
   ],
   "dependencies": {
+    "cross-spawn": "^7.0.6",
     "knip": "^6.47.0"
   }
 }

@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
-import { spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
 import { access, lstat, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { run, runPackageManager, runWindowsShim } from './process-runner.js';
 
 const CHECK_SCRIPTS = ['typecheck', 'lint', 'test', 'build'];
 const AUTO_CATEGORIES = new Set(['files', 'exports', 'types', 'enumMembers', 'namespaceMembers', 'dependencies', 'devDependencies']);
@@ -44,45 +44,6 @@ async function detectPackageManager(directory, packageJson) {
   const declared = packageJson.packageManager?.split('@')[0];
   if (['npm', 'pnpm', 'yarn', 'bun'].includes(declared)) return declared;
   throw new Error('Could not detect the package manager. Add a lockfile or packageManager field to package.json.');
-}
-
-function run(command, args, cwd, { capture = false } = {}) {
-  const result = spawnSync(command, args, {
-    cwd, encoding: 'utf8',
-    stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
-    shell: false,
-    windowsHide: true,
-  });
-  if (result.error) throw new Error(`${command} could not be started: ${result.error.message}`);
-  return result;
-}
-
-function runWindowsShim(command, args, cwd, { capture = false } = {}) {
-  if (process.platform !== 'win32') return run(command.replace(/\.cmd$/i, ''), args, cwd, { capture });
-
-  // .cmd files cannot be launched directly with shell:false. Run the known npm shims
-  // through cmd.exe, while rejecting characters that could become shell syntax.
-  const safeArgs = args.map((arg) => {
-    const value = String(arg);
-    if (!/^[A-Za-z0-9_./:@+~=-]+$/.test(value)) {
-      throw new Error(`Refusing unsafe Windows command argument: ${value}`);
-    }
-    return value;
-  });
-  const commandLine = `call "${command}"${safeArgs.length ? ` ${safeArgs.join(' ')}` : ''}`;
-  const result = spawnSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', commandLine], {
-    cwd, encoding: 'utf8',
-    stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
-    shell: false,
-    windowsHide: true,
-  });
-  if (result.error) throw new Error(`${command} could not be started: ${result.error.message}`);
-  return result;
-}
-
-function runPackageManager(manager, args, cwd, options) {
-  if (process.platform === 'win32') return runWindowsShim(`${manager}.cmd`, args, cwd, options);
-  return run(manager, args, cwd, options);
 }
 
 async function findKnip(directory) {
