@@ -36,11 +36,11 @@ test('Windows package-manager and global Knip shims work from a PATH directory w
     await writeFile(path.join(binDirectory, `${manager}.cmd`), `@echo off\r\necho ${manager} %*\r\n`);
     const result = runPackageManager(manager, ['uninstall', '@scope/pkg@^1.2.3'], directory, { capture: true });
     assert.equal(result.status, 0, result.stderr);
-    assert.equal(result.stdout.trim(), `${manager} uninstall @scope/pkg@^1.2.3`);
+    assert.equal(result.stdout.trim(), `${manager} "uninstall" "@scope/pkg@^1.2.3"`);
   }
 
   await writeFile(path.join(binDirectory, 'knip.cmd'), '@echo off\r\necho knip %*\r\n');
   const knip = runWindowsShim('knip.cmd', ['--config', 'knip config.json'], directory, { capture: true });
   assert.equal(knip.status, 0, knip.stderr);
-  assert.equal(knip.stdout.trim(), 'knip --config knip config.json');
+  assert.equal(knip.stdout.trim(), 'knip "--config" "knip config.json"');
 });
