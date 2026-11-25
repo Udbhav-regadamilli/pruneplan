@@ -50,12 +50,39 @@ function run(command, args, cwd, { capture = false } = {}) {
   const result = spawnSync(command, args, {
     cwd, encoding: 'utf8',
     stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
-    // Windows package-manager and global Knip commands are commonly exposed as .cmd shims.
-    shell: process.platform === 'win32',
+    shell: false,
     windowsHide: true,
   });
   if (result.error) throw new Error(`${command} could not be started: ${result.error.message}`);
   return result;
+}
+
+function runWindowsShim(command, args, cwd, { capture = false } = {}) {
+  if (process.platform !== 'win32') return run(command.replace(/\.cmd$/i, ''), args, cwd, { capture });
+
+  // .cmd files cannot be launched directly with shell:false. Run the known npm shims
+  // through cmd.exe, while rejecting characters that could become shell syntax.
+  const safeArgs = args.map((arg) => {
+    const value = String(arg);
+    if (!/^[A-Za-z0-9_./:@+~=-]+$/.test(value)) {
+      throw new Error(`Refusing unsafe Windows command argument: ${value}`);
+    }
+    return value;
+  });
+  const commandLine = `call "${command}"${safeArgs.length ? ` ${safeArgs.join(' ')}` : ''}`;
+  const result = spawnSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', commandLine], {
+    cwd, encoding: 'utf8',
+    stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
+    shell: false,
+    windowsHide: true,
+  });
+  if (result.error) throw new Error(`${command} could not be started: ${result.error.message}`);
+  return result;
+}
+
+function runPackageManager(manager, args, cwd, options) {
+  if (process.platform === 'win32') return runWindowsShim(`${manager}.cmd`, args, cwd, options);
+  return run(manager, args, cwd, options);
 }
 
 async function findKnip(directory) {
@@ -69,7 +96,9 @@ async function findKnip(directory) {
   }
   const bundled = fileURLToPath(new URL('../node_modules/knip/bin/knip.js', import.meta.url));
   try { await access(bundled); return { command: process.execPath, prefixArgs: [bundled], source: 'bundled' }; } catch {}
-  return { command: 'knip', prefixArgs: [], source: 'PATH' };
+  return process.platform === 'win32'
+    ? { command: 'knip.cmd', prefixArgs: [], source: 'PATH', windowsShim: true }
+    : { command: 'knip', prefixArgs: [], source: 'PATH' };
 }
 
 function extractIssues(output) {
@@ -204,14 +233,17 @@ async function runChecks(directory, packageJson) {
   const manager = await detectPackageManager(directory, packageJson);
   stdout.write(`\nRunning checks with ${manager}: ${available.join(', ')}\n`);
   for (const name of available) {
-    const result = run(manager, ['run', name], directory);
+    const result = runPackageManager(manager, ['run', name], directory);
     if (result.status !== 0) { stdout.write(`\nValidation failed at \`${name}\`. Changes remain in the working tree; inspect with git diff.\n`); return false; }
   }
   return true;
 }
 
 async function scanProject(directory, knip) {
-  const result = run(knip.command, [...knip.prefixArgs, '--reporter', 'json', '--no-exit-code'], directory, { capture: true });
+  const args = [...knip.prefixArgs, '--reporter', 'json', '--no-exit-code'];
+  const result = knip.windowsShim
+    ? runWindowsShim(knip.command, args, directory, { capture: true })
+    : run(knip.command, args, directory, { capture: true });
   if (result.status !== 0) throw new Error(result.stderr.trim() || 'Knip scan failed. Check its configuration and try again.');
   return extractIssues(result.stdout);
 }
@@ -278,7 +310,7 @@ async function main() {
   const packages = [...new Set(selected.filter((item) => item.kind === 'dependency').map((item) => item.name))];
   if (packages.length) {
     stdout.write(`\nRemoving selected packages with ${manager}: ${packages.join(', ')}\n`);
-    const result = run(manager, managerRemoveArgs(manager, packages), directory);
+    const result = runPackageManager(manager, managerRemoveArgs(manager, packages), directory);
     if (result.status !== 0) throw new Error('Package manager removal failed. Review the current working tree before continuing.');
   }
   const checksPassed = await runChecks(directory, packageJson);
