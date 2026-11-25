@@ -1,6 +1,6 @@
 {
   "name": "pruneplan",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Review and safely apply unused dependency and dead code cleanup plans.",
   "type": "module",
   "author": "Lakshmi Udbhav Regadamilli",
