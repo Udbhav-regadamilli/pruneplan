@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
-import { spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
 import { access, lstat, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { run, runPackageManager, runWindowsShim } from './process-runner.js';
 
 const CHECK_SCRIPTS = ['typecheck', 'lint', 'test', 'build'];
 const AUTO_CATEGORIES = new Set(['files', 'exports', 'types', 'enumMembers', 'namespaceMembers', 'dependencies', 'devDependencies']);
@@ -46,18 +46,6 @@ async function detectPackageManager(directory, packageJson) {
   throw new Error('Could not detect the package manager. Add a lockfile or packageManager field to package.json.');
 }
 
-function run(command, args, cwd, { capture = false } = {}) {
-  const result = spawnSync(command, args, {
-    cwd, encoding: 'utf8',
-    stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
-    // Windows package-manager and global Knip commands are commonly exposed as .cmd shims.
-    shell: process.platform === 'win32',
-    windowsHide: true,
-  });
-  if (result.error) throw new Error(`${command} could not be started: ${result.error.message}`);
-  return result;
-}
-
 async function findKnip(directory) {
   let current = directory;
   while (true) {
@@ -69,7 +57,9 @@ async function findKnip(directory) {
   }
   const bundled = fileURLToPath(new URL('../node_modules/knip/bin/knip.js', import.meta.url));
   try { await access(bundled); return { command: process.execPath, prefixArgs: [bundled], source: 'bundled' }; } catch {}
-  return { command: 'knip', prefixArgs: [], source: 'PATH' };
+  return process.platform === 'win32'
+    ? { command: 'knip.cmd', prefixArgs: [], source: 'PATH', windowsShim: true }
+    : { command: 'knip', prefixArgs: [], source: 'PATH' };
 }
 
 function extractIssues(output) {
@@ -204,14 +194,17 @@ async function runChecks(directory, packageJson) {
   const manager = await detectPackageManager(directory, packageJson);
   stdout.write(`\nRunning checks with ${manager}: ${available.join(', ')}\n`);
   for (const name of available) {
-    const result = run(manager, ['run', name], directory);
+    const result = runPackageManager(manager, ['run', name], directory);
     if (result.status !== 0) { stdout.write(`\nValidation failed at \`${name}\`. Changes remain in the working tree; inspect with git diff.\n`); return false; }
   }
   return true;
 }
 
 async function scanProject(directory, knip) {
-  const result = run(knip.command, [...knip.prefixArgs, '--reporter', 'json', '--no-exit-code'], directory, { capture: true });
+  const args = [...knip.prefixArgs, '--reporter', 'json', '--no-exit-code'];
+  const result = knip.windowsShim
+    ? runWindowsShim(knip.command, args, directory, { capture: true })
+    : run(knip.command, args, directory, { capture: true });
   if (result.status !== 0) throw new Error(result.stderr.trim() || 'Knip scan failed. Check its configuration and try again.');
   return extractIssues(result.stdout);
 }
@@ -278,7 +271,7 @@ async function main() {
   const packages = [...new Set(selected.filter((item) => item.kind === 'dependency').map((item) => item.name))];
   if (packages.length) {
     stdout.write(`\nRemoving selected packages with ${manager}: ${packages.join(', ')}\n`);
-    const result = run(manager, managerRemoveArgs(manager, packages), directory);
+    const result = runPackageManager(manager, managerRemoveArgs(manager, packages), directory);
     if (result.status !== 0) throw new Error('Package manager removal failed. Review the current working tree before continuing.');
   }
   const checksPassed = await runChecks(directory, packageJson);
