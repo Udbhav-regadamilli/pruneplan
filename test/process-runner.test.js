@@ -1,9 +1,37 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { copyFile, mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { run, runPackageManager, runWindowsShim } from '../bin/process-runner.js';
+
+test('JSON mode emits standalone versioned JSON for clean and findings reports', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'pruneplan json report-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  const cliPath = fileURLToPath(new URL('../bin/pruneplan.js', import.meta.url));
+  const packageRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+  for (const [name, dependencies] of [['clean', {}], ['findings', { 'unused-package': '1.0.0' }]]) {
+    const directory = path.join(root, name);
+    await mkdir(directory);
+    const packageJson = { name: 'json-' + name, version: '1.0.0', main: 'index.js', dependencies };
+    await writeFile(path.join(directory, 'package.json'), JSON.stringify(packageJson, null, 2) + '\n');
+    const lock = { name: packageJson.name, version: packageJson.version, lockfileVersion: 3, requires: true, packages: { '': { name: packageJson.name, version: packageJson.version } } };
+    await writeFile(path.join(directory, 'package-lock.json'), JSON.stringify(lock, null, 2) + '\n');
+    await writeFile(path.join(directory, 'index.js'), 'export const ready = true;\n');
+
+    const result = spawnSync(process.execPath, [cliPath, directory, '--json'], { cwd: packageRoot, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stderr, '');
+    assert.doesNotMatch(result.stdout, /^Scanning /m);
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.schemaVersion, 1);
+    assert.ok(Array.isArray(report.candidates));
+    if (name === 'findings') assert.ok(report.candidates.some((item) => item.kind === 'dependency' && item.name === 'unused-package'));
+  }
+});
 
 test('direct Node execution handles executable and script paths containing spaces', async (t) => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'pruneplan path with spaces-'));
