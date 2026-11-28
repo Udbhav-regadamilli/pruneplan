@@ -36,6 +36,8 @@ Use `--json` to print a machine-readable report, including warnings and Knip ver
 npx pruneplan --json
 ```
 
+The JSON report is written to stdout without progress text and starts with `schemaVersion: 1`. Consumers can use this field to check the report format before reading `knip`, `candidates`, and `warnings`. Any errors are written to stderr.
+
 ## Review and safety
 
 - The default command is preview-only and does not modify files.
