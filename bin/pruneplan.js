@@ -228,11 +228,11 @@ async function main() {
   const knip = await findKnip(directory);
   knip.version = await getKnipVersion(directory);
 
-  stdout.write(`Scanning ${path.relative(process.cwd(), directory) || '.'} with Knip…\n`);
+  if (!options.json) stdout.write(`Scanning ${path.relative(process.cwd(), directory) || '.'} with Knip…\n`);
   const report = await scanProject(directory, knip);
   const plan = collectPlan(report);
   if (options.json) {
-    stdout.write(`${JSON.stringify({ knip: { version: knip.version, source: knip.source }, ...plan }, null, 2)}\n`);
+    stdout.write(`${JSON.stringify({ schemaVersion: 1, knip: { version: knip.version, source: knip.source }, ...plan }, null, 2)}\n`);
     return;
   }
   displayPlan(plan, manager, knip);
